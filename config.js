@@ -1,11 +1,8 @@
-// Grove configuration.
-// Leave the values below empty to try the app in DEMO MODE (data stays on this device, sample group friends).
-// To sync across devices and compare hours with real friends, paste your Firebase web-app keys here (see README.md).
 window.GROVE_CONFIG = {
   firebase: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    appId: ''
+    apiKey: 'AIzaSyBE6Vpso7-qHlkXa4tsYPMBkVAAvn7WeQU',
+    authDomain: 'grove-3d520.firebaseapp.com',
+    projectId: 'grove-3d520',
+    appId: '1:167947022312:web:b29eed4731c4f7d2acbe5d'
   }
 };
