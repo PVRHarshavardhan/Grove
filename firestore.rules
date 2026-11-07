@@ -1,0 +1,66 @@
+rules_version = '2';
+// Grove — Cloud Firestore security rules.
+// Paste into Firebase console → Firestore Database → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+
+    // Private data: only the owner can read or write anything under /users/{uid}
+    match /users/{uid} {
+      allow read, write: if signedIn() && me() == uid;
+      match /{rest=**} {
+        allow read, write: if signedIn() && me() == uid;
+      }
+    }
+
+    // Groups. The document id is the 6-character invite code.
+    match /groups/{code} {
+      function isMember() { return me() in resource.data.members; }
+      function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+      function newMembers() { return request.resource.data.members; }
+      function oldMembers() { return resource.data.members; }
+
+      // Anyone signed in can open a group by its code (needed to join); listing only returns your own groups.
+      allow get: if signedIn();
+      allow list: if signedIn() && me() in resource.data.members;
+
+      allow create: if signedIn()
+        && request.resource.data.owner == me()
+        && request.resource.data.members == [me()]
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60;
+
+      allow update: if signedIn() && (
+        // owner can change name, goal, remove members
+        (resource.data.owner == me() && request.resource.data.owner == me() && newMembers().size() <= 50)
+        // join: add only yourself
+        || (!isMember() && onlyChanges(['members', 'info'])
+            && newMembers().hasAll(oldMembers()) && newMembers().size() == oldMembers().size() + 1
+            && me() in newMembers() && newMembers().size() <= 50
+            && request.resource.data.info.diff(resource.data.info).affectedKeys().hasOnly([me()]))
+        // leave: remove only yourself
+        || (isMember() && resource.data.owner != me() && onlyChanges(['members', 'info'])
+            && oldMembers().hasAll(newMembers()) && newMembers().size() == oldMembers().size() - 1
+            && !(me() in newMembers())
+            && request.resource.data.info.diff(resource.data.info).affectedKeys().hasOnly([me()]))
+        // update your own name/photo
+        || (isMember() && onlyChanges(['info'])
+            && request.resource.data.info.diff(resource.data.info).affectedKeys().hasOnly([me()]))
+      );
+
+      allow delete: if signedIn() && resource.data.owner == me();
+
+      // Daily study totals each member shares with the group (hours + trees only, never tasks).
+      match /days/{dayId} {
+        function memberOfGroup() { return me() in get(/databases/$(database)/documents/groups/$(code)).data.members; }
+        allow read: if signedIn() && memberOfGroup();
+        allow create, update: if signedIn() && memberOfGroup()
+          && request.resource.data.uid == me()
+          && dayId == request.resource.data.date + '_' + me()
+          && request.resource.data.mins is number && request.resource.data.mins <= 1440;
+        allow delete: if signedIn() && resource.data.uid == me();
+      }
+    }
+  }
+}
